@@ -47,6 +47,38 @@ export const FrontmatterSchema = z.object({
   kind:            z.enum(["local", "remote"]).optional(),
 });
 
+// ── Markdown include helpers ─────────────────────────────────────────────────
+
+/**
+ * Detect whether a `.md` file is a pre-compiled skill (has YAML frontmatter
+ * with a `name` key) or a plain context file.
+ *
+ * Skill .md (frontmatter detected):
+ *   ---
+ *   name: review
+ *   parameters: file (string), depth (number)
+ *   ---
+ *   Body text…
+ *
+ * Context .md (no frontmatter or no `name` key): raw text is returned as-is.
+ */
+function parseMdContent(
+  content: string
+): { type: "skill"; name: string; params: string; body: string } | { type: "context"; text: string } {
+  if (!content.startsWith("---\n")) return { type: "context", text: content };
+  const closeIdx = content.indexOf("\n---", 4);
+  if (closeIdx === -1) return { type: "context", text: content };
+  const fm: Record<string, string> = {};
+  for (const fmLine of content.slice(4, closeIdx).split("\n")) {
+    const fmm = fmLine.match(/^([\w]+):\s*(.+)$/);
+    if (fmm) fm[fmm[1]!] = fmm[2]!.trim();
+  }
+  if (!fm["name"]) return { type: "context", text: content };
+  const bodyStart = closeIdx + 4 + (content[closeIdx + 4] === "\n" ? 1 : 0);
+  const body = content.slice(bodyStart).trim();
+  return { type: "skill", name: fm["name"], params: fm["parameters"] ?? "", body };
+}
+
 // ── Path utilities ──────────────────────────────────────────────────────────
 
 function normalizePath(path: string): string {
@@ -226,6 +258,18 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
         const content = ctx.files[resolved];
         if (content === undefined) {
           ctx.warnings.push({ key: "#include", value: rawPath, message: `File not found: "${rawPath}"`, line: ctx.lineNum });
+        } else if (resolved.endsWith(".md")) {
+          const prevVisited = ctx.visitedFiles;
+          ctx.visitedFiles  = new Set([...ctx.visitedFiles, resolved]);
+          const parsed = parseMdContent(content);
+          if (parsed.type === "skill") {
+            ctx.skills.push({ name: parsed.name, params: parsed.params, body: parsed.body, inline: false });
+          } else {
+            for (const l of splitLines(parsed.text)) {
+              ctx.fn!.lines.push(interpolateVars(l, ctx.defines));
+            }
+          }
+          ctx.visitedFiles = prevVisited;
         } else {
           const prevFile    = ctx.currentFile;
           const prevVisited = ctx.visitedFiles;
@@ -306,6 +350,22 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
       const content = ctx.files[resolved];
       if (content === undefined) {
         ctx.warnings.push({ key: "#include", value: rawPath, message: `File not found: "${rawPath}"`, line: ctx.lineNum });
+      } else if (resolved.endsWith(".md")) {
+        const prevVisited = ctx.visitedFiles;
+        ctx.visitedFiles  = new Set([...ctx.visitedFiles, resolved]);
+        const parsed = parseMdContent(content);
+        if (parsed.type === "skill") {
+          ctx.skills.push({ name: parsed.name, params: parsed.params, body: parsed.body, inline: false });
+        } else {
+          const prevFile = ctx.currentFile;
+          const prevLine = ctx.lineNum;
+          ctx.currentFile = resolved;
+          ctx.lineNum     = 0;
+          for (const l of splitLines(parsed.text)) ctxFeedLine(l, ctx);
+          ctx.currentFile = prevFile;
+          ctx.lineNum     = prevLine;
+        }
+        ctx.visitedFiles = prevVisited;
       } else {
         const prevFile    = ctx.currentFile;
         const prevVisited = ctx.visitedFiles;
@@ -495,6 +555,7 @@ function cleanBody(body: string): string {
 
 export function formatParams(params: string): string {
   if (!params || params === "void") return "";
+  if (params.includes("(")) return params; // already formatted (e.g. from a .md skill file)
   return params
     .split(",")
     .map((p) => {

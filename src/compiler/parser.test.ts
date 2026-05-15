@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { parseCAgent } from "./parser";
+import { parseCAgent, formatParams } from "./parser";
 
 // Helper: build a source string using actual tab characters for body indentation.
 // Template literals preserve whitespace literally, so we use \t explicitly.
@@ -717,6 +717,7 @@ describe("repo includes (#include <alias/path>)", () => {
   });
 
   test("repo include respects #def name isolation (fn main ignored)", () => {
+
     const repos = {
       "lib": {
         "agent.ca": [
@@ -739,5 +740,115 @@ describe("repo includes (#include <alias/path>)", () => {
     expect(agent.systemPrompt).toBe("You are my agent.");
     expect(agent.skills).toHaveLength(1);
     expect(agent.skills[0]!.name).toBe("util");
+  });
+});
+
+describe(".md file includes", () => {
+  const skillMd = [
+    "---",
+    "name: review",
+    "parameters: file (string), depth (number)",
+    "---",
+    "",
+    "Review the file for code quality.",
+    "depth controls thoroughness (1–5).",
+  ].join("\n");
+
+  const contextMd = "Use plain English. Be concise and direct.";
+
+  test("top-level skill .md is registered as a skill", () => {
+    const source = [
+      "#def name agent",
+      '#include "shared/review.md"',
+      "fn main() {",
+      "\tYou are a helpful assistant.",
+      "}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "shared/review.md": skillMd });
+    expect(agent.skills).toHaveLength(1);
+    expect(agent.skills[0]!.name).toBe("review");
+    expect(agent.skills[0]!.body).toContain("Review the file for code quality.");
+  });
+
+  test("skill .md params are preserved as-is (already formatted)", () => {
+    const source = [
+      "#def name agent",
+      '#include "review.md"',
+      "fn main() {\n\tYou are an assistant.\n}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "review.md": skillMd });
+    expect(agent.skills[0]!.params).toBe("file (string), depth (number)");
+  });
+
+  test("body-level skill .md is registered as a skill, not inlined into body", () => {
+    const source = [
+      "#def name agent",
+      "fn main() {",
+      '\t#include "review.md"',
+      "\tYou are an assistant.",
+      "}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "review.md": skillMd });
+    expect(agent.skills).toHaveLength(1);
+    expect(agent.skills[0]!.name).toBe("review");
+    expect(agent.systemPrompt).not.toContain("Review the file");
+    expect(agent.systemPrompt).toBe("You are an assistant.");
+  });
+
+  test("context .md inside a body is injected into the body text", () => {
+    const source = [
+      "#def name agent",
+      "fn main() {",
+      "\tYou are an assistant.",
+      '\t#include "style.md"',
+      "}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "style.md": contextMd });
+    expect(agent.systemPrompt).toContain("You are an assistant.");
+    expect(agent.systemPrompt).toContain("Use plain English. Be concise and direct.");
+  });
+
+  test("context .md at top level does not error", () => {
+    const source = [
+      "#def name agent",
+      '#include "style.md"',
+      "fn main() {",
+      "\tYou are an assistant.",
+      "}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "style.md": contextMd });
+    expect(agent.warnings).toHaveLength(0);
+    expect(agent.systemPrompt).toBe("You are an assistant.");
+  });
+
+  test(".md without frontmatter is treated as context", () => {
+    const source = [
+      "#def name agent",
+      "fn review(str file) {",
+      '\t#include "guidelines.md"',
+      "}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "guidelines.md": "Always check for security issues." });
+    expect(agent.skills[0]!.body).toContain("Always check for security issues.");
+  });
+
+  test(".md with frontmatter but no name is treated as context", () => {
+    const noNameMd = "---\nmodel: sonnet\n---\nSome content.";
+    const source = [
+      "#def name agent",
+      "fn main() {",
+      '\t#include "partial.md"',
+      "\tYou are an assistant.",
+      "}",
+    ].join("\n");
+    const agent = parseCAgent(source, { "partial.md": noNameMd });
+    expect(agent.skills).toHaveLength(0);
+    expect(agent.systemPrompt).toContain("---");
+  });
+
+  test("formatParams passes through already-formatted params", () => {
+    expect(formatParams("file (string), depth (number)")).toBe("file (string), depth (number)");
+    expect(formatParams("str file, int depth")).toBe("file (string), depth (number)");
+    expect(formatParams("")).toBe("");
   });
 });
