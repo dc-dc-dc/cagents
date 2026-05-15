@@ -201,6 +201,62 @@ function ctxIsActive(ctx: ParseCtx): boolean {
   return ctx.condStack.length === 0 || ctx.condStack.every(Boolean);
 }
 
+// Save/restore position state and inline a file's lines through ctxFeedLine.
+// depthDelta is +1 for top-level (outside fn body) includes, 0 inside a body.
+// indent is prepended to column-0 non-empty lines (used in body-level includes).
+function expandLines(ctx: ParseCtx, refKey: string, content: string, indent: string, depthDelta: number): void {
+  const prevFile = ctx.currentFile, prevVisited = ctx.visitedFiles, prevLine = ctx.lineNum;
+  ctx.currentFile = refKey;
+  ctx.visitedFiles = new Set([...ctx.visitedFiles, refKey]);
+  ctx.lineNum = 0;
+  ctx.includeDepth += depthDelta;
+  for (const l of splitLines(content))
+    ctxFeedLine(indent && l !== "" && !/^[ \t]/.test(l) ? indent + l : l, ctx);
+  ctx.includeDepth -= depthDelta;
+  ctx.currentFile = prevFile;
+  ctx.visitedFiles = prevVisited;
+  ctx.lineNum = prevLine;
+}
+
+function doFileInclude(ctx: ParseCtx, rawPath: string, indent: string): void {
+  const resolved = normalizePath(rawPath.startsWith("/") ? rawPath.slice(1) : parentDir(ctx.currentFile) + rawPath);
+  if (ctx.visitedFiles.has(resolved)) return;
+  const content = ctx.files[resolved];
+  if (content === undefined) {
+    ctx.warnings.push({ key: "#include", value: rawPath, message: `File not found: "${rawPath}"`, line: ctx.lineNum });
+    return;
+  }
+  if (resolved.endsWith(".md")) {
+    const prevVisited = ctx.visitedFiles;
+    ctx.visitedFiles = new Set([...ctx.visitedFiles, resolved]);
+    const parsed = parseMdContent(content);
+    if (parsed.type === "skill") {
+      ctx.skills.push({ name: parsed.name, params: parsed.params, body: parsed.body, inline: false });
+    } else if (ctx.fn) {
+      for (const l of splitLines(parsed.text)) ctx.fn.lines.push(interpolateVars(l, ctx.defines));
+    } else {
+      const prevFile = ctx.currentFile, prevLine = ctx.lineNum;
+      ctx.currentFile = resolved; ctx.lineNum = 0;
+      for (const l of splitLines(parsed.text)) ctxFeedLine(l, ctx);
+      ctx.currentFile = prevFile; ctx.lineNum = prevLine;
+    }
+    ctx.visitedFiles = prevVisited;
+    return;
+  }
+  expandLines(ctx, resolved, content, indent, ctx.fn ? 0 : 1);
+}
+
+function doRepoInclude(ctx: ParseCtx, alias: string, path: string, indent: string): void {
+  const refKey = `<${alias}/${path}>`;
+  if (ctx.visitedFiles.has(refKey)) return;
+  const result = resolveRepoContent(ctx.repos, alias, path);
+  if ("error" in result) {
+    ctx.warnings.push({ key: "#include", value: refKey, message: result.error, line: ctx.lineNum });
+    return;
+  }
+  expandLines(ctx, refKey, result.content, indent, ctx.fn ? 0 : 1);
+}
+
 function ctxCloseFunction(ctx: ParseCtx): void {
   const fn = ctx.fn!;
   ctx.fn   = null;
@@ -226,212 +282,61 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
   // Bodies are indentation-delimited: any non-blank, column-0 line closes the body,
   // EXCEPT #if/#endif which are always treated as body conditionals regardless of indent.
   // } closes silently; any other column-0 line closes AND is re-processed.
-  // #include expands the referenced file. // lines are stripped.
-  // Everything else accumulates as literal body content.
   if (ctx.fn) {
-    // #if/#endif at any indentation level (including column 0) act as body conditionals
     let bm: RegExpMatchArray | null;
     bm = line.match(/^[ \t]*#if\s+(\w+)\s*==\s*(\S+)/);
     if (bm) { ctx.condStack.push(ctxIsActive(ctx) && (ctx.defines[bm[1]!] ?? "") === bm[2]!); return; }
     bm = line.match(/^[ \t]*#if\s+(\w+)\s*!=\s*(\S+)/);
     if (bm) { ctx.condStack.push(ctxIsActive(ctx) && (ctx.defines[bm[1]!] ?? "") !== bm[2]!); return; }
     if (/^[ \t]*#endif\b/.test(line)) { ctx.condStack.pop(); return; }
-    // Non-blank column-0 line (other than #if/#endif) → close the body
     if (line !== "" && !/^[ \t]/.test(line)) {
-      if (!ctxIsActive(ctx)) return; // skip col-0 lines inside inactive blocks
+      if (!ctxIsActive(ctx)) return;
       ctxCloseFunction(ctx);
-      if (!/^\}\s*$/.test(line)) ctxFeedLine(line, ctx); // re-process non-} lines
+      if (!/^\}\s*$/.test(line)) ctxFeedLine(line, ctx);
       return;
     }
-    // Empty line → pass through to body
     if (line === "") { ctx.fn.lines.push(line); return; }
-    // Indented line: skip if inactive, then process #include and //
     if (!ctxIsActive(ctx)) return;
     bm = line.match(/^([ \t]+)#include\s+"([^"]+)"\s*$/);
-    if (bm) {
-      const indent   = bm[1]!;
-      const rawPath  = bm[2]!;
-      const resolved = normalizePath(
-        rawPath.startsWith("/") ? rawPath.slice(1) : parentDir(ctx.currentFile) + rawPath
-      );
-      if (!ctx.visitedFiles.has(resolved)) {
-        const content = ctx.files[resolved];
-        if (content === undefined) {
-          ctx.warnings.push({ key: "#include", value: rawPath, message: `File not found: "${rawPath}"`, line: ctx.lineNum });
-        } else if (resolved.endsWith(".md")) {
-          const prevVisited = ctx.visitedFiles;
-          ctx.visitedFiles  = new Set([...ctx.visitedFiles, resolved]);
-          const parsed = parseMdContent(content);
-          if (parsed.type === "skill") {
-            ctx.skills.push({ name: parsed.name, params: parsed.params, body: parsed.body, inline: false });
-          } else {
-            for (const l of splitLines(parsed.text)) {
-              ctx.fn!.lines.push(interpolateVars(l, ctx.defines));
-            }
-          }
-          ctx.visitedFiles = prevVisited;
-        } else {
-          const prevFile    = ctx.currentFile;
-          const prevVisited = ctx.visitedFiles;
-          const prevLine    = ctx.lineNum;
-          ctx.currentFile   = resolved;
-          ctx.visitedFiles  = new Set([...ctx.visitedFiles, resolved]);
-          ctx.lineNum       = 0;
-          for (const l of splitLines(content)) {
-            // Prefix column-0 lines with the same whitespace as the #include
-            // line so indentation stays consistent with the rest of the body.
-            ctxFeedLine(l !== "" && !/^[ \t]/.test(l) ? indent + l : l, ctx);
-          }
-          ctx.currentFile   = prevFile;
-          ctx.visitedFiles  = prevVisited;
-          ctx.lineNum       = prevLine;
-        }
-      }
-      return;
-    }
+    if (bm) { doFileInclude(ctx, bm[2]!, bm[1]!); return; }
     bm = line.match(/^([ \t]+)#include\s+<([\w-]+)\/([^>\s]+)>\s*$/);
-    if (bm) {
-      const indent = bm[1]!, alias = bm[2]!, path = bm[3]!;
-      const refKey = `<${alias}/${path}>`;
-      if (!ctx.visitedFiles.has(refKey)) {
-        const result = resolveRepoContent(ctx.repos, alias, path);
-        if ("error" in result) {
-          ctx.warnings.push({ key: "#include", value: refKey, message: result.error, line: ctx.lineNum });
-        } else {
-          const prevFile    = ctx.currentFile;
-          const prevVisited = ctx.visitedFiles;
-          const prevLine    = ctx.lineNum;
-          ctx.currentFile   = refKey;
-          ctx.visitedFiles  = new Set([...ctx.visitedFiles, refKey]);
-          ctx.lineNum       = 0;
-          for (const l of splitLines(result.content)) {
-            ctxFeedLine(l !== "" && !/^[ \t]/.test(l) ? indent + l : l, ctx);
-          }
-          ctx.currentFile   = prevFile;
-          ctx.visitedFiles  = prevVisited;
-          ctx.lineNum       = prevLine;
-        }
-      }
-      return;
-    }
+    if (bm) { doRepoInclude(ctx, bm[2]!, bm[3]!, bm[1]!); return; }
     const bodyLine = line.startsWith("\t") ? line.slice(1) : line;
     if (/^\s*\/\//.test(bodyLine)) return;
-    // #def inside a body sets a variable (silently, no output, no frontmatter)
     const dm = bodyLine.match(/^\s*#def\s+(\w+)\s+(.+)/);
-    if (dm && dm[1] && dm[2]) {
-      ctx.defines[dm[1]] = interpolateVars(dm[2].trim(), ctx.defines);
-      return;
-    }
+    if (dm && dm[1] && dm[2]) { ctx.defines[dm[1]] = interpolateVars(dm[2].trim(), ctx.defines); return; }
     ctx.fn.lines.push(interpolateVars(line, ctx.defines));
     return;
   }
 
-  // Conditional directives — only evaluated at top level (outside fn bodies)
   let m: RegExpMatchArray | null;
 
   m = line.match(/^#if\s+(\w+)\s*==\s*(\S+)/);
   if (m) { ctx.condStack.push(ctxIsActive(ctx) && (ctx.defines[m[1]!] ?? "") === m[2]!); return; }
-
   m = line.match(/^#if\s+(\w+)\s*!=\s*(\S+)/);
   if (m) { ctx.condStack.push(ctxIsActive(ctx) && (ctx.defines[m[1]!] ?? "") !== m[2]!); return; }
-
   if (/^#endif\b/.test(line)) { ctx.condStack.pop(); return; }
-
   if (!ctxIsActive(ctx)) return;
 
-  // #include — inline the referenced file's lines
   m = line.match(/^#include\s+"([^"]+)"\s*$/);
-  if (m) {
-    const rawPath  = m[1]!;
-    const resolved = normalizePath(
-      rawPath.startsWith("/") ? rawPath.slice(1) : parentDir(ctx.currentFile) + rawPath
-    );
-    if (!ctx.visitedFiles.has(resolved)) {
-      const content = ctx.files[resolved];
-      if (content === undefined) {
-        ctx.warnings.push({ key: "#include", value: rawPath, message: `File not found: "${rawPath}"`, line: ctx.lineNum });
-      } else if (resolved.endsWith(".md")) {
-        const prevVisited = ctx.visitedFiles;
-        ctx.visitedFiles  = new Set([...ctx.visitedFiles, resolved]);
-        const parsed = parseMdContent(content);
-        if (parsed.type === "skill") {
-          ctx.skills.push({ name: parsed.name, params: parsed.params, body: parsed.body, inline: false });
-        } else {
-          const prevFile = ctx.currentFile;
-          const prevLine = ctx.lineNum;
-          ctx.currentFile = resolved;
-          ctx.lineNum     = 0;
-          for (const l of splitLines(parsed.text)) ctxFeedLine(l, ctx);
-          ctx.currentFile = prevFile;
-          ctx.lineNum     = prevLine;
-        }
-        ctx.visitedFiles = prevVisited;
-      } else {
-        const prevFile    = ctx.currentFile;
-        const prevVisited = ctx.visitedFiles;
-        const prevLine    = ctx.lineNum;
-        ctx.currentFile   = resolved;
-        ctx.visitedFiles  = new Set([...ctx.visitedFiles, resolved]);
-        ctx.lineNum       = 0;
-        ctx.includeDepth++;
-        for (const l of splitLines(content)) ctxFeedLine(l, ctx);
-        ctx.includeDepth--;
-        ctx.currentFile   = prevFile;
-        ctx.visitedFiles  = prevVisited;
-        ctx.lineNum       = prevLine;
-      }
-    }
-    return;
-  }
-
-  // #include <alias/path> — repo include
+  if (m) { doFileInclude(ctx, m[1]!, ""); return; }
   m = line.match(/^#include\s+<([\w-]+)\/([^>\s]+)>\s*$/);
-  if (m) {
-    const alias = m[1]!, path = m[2]!;
-    const refKey = `<${alias}/${path}>`;
-    if (!ctx.visitedFiles.has(refKey)) {
-      const result = resolveRepoContent(ctx.repos, alias, path);
-      if ("error" in result) {
-        ctx.warnings.push({ key: "#include", value: refKey, message: result.error, line: ctx.lineNum });
-      } else {
-        const prevFile    = ctx.currentFile;
-        const prevVisited = ctx.visitedFiles;
-        const prevLine    = ctx.lineNum;
-        ctx.currentFile   = refKey;
-        ctx.visitedFiles  = new Set([...ctx.visitedFiles, refKey]);
-        ctx.lineNum       = 0;
-        ctx.includeDepth++;
-        for (const l of splitLines(result.content)) ctxFeedLine(l, ctx);
-        ctx.includeDepth--;
-        ctx.currentFile   = prevFile;
-        ctx.visitedFiles  = prevVisited;
-        ctx.lineNum       = prevLine;
-      }
-    }
-    return;
-  }
+  if (m) { doRepoInclude(ctx, m[1]!, m[2]!, ""); return; }
 
-  // #def key value
   m = line.match(/^#def\s+(\w+)\s+(.+)/);
   if (m && m[1] && m[2]) {
     const key = m[1], value = interpolateVars(m[2].trim(), ctx.defines);
     ctx.defines[key] = value;
     if (ctx.includeDepth === 0) {
-      if (key === "name") {
-        ctx.projectName = value;
-      } else if (KNOWN_KEYS.has(key)) {
-        ctx.frontmatter[key] = value;
-        ctx.lineMap[key]     = ctx.lineNum;
-      }
+      if (key === "name") ctx.projectName = value;
+      else if (KNOWN_KEYS.has(key)) { ctx.frontmatter[key] = value; ctx.lineMap[key] = ctx.lineNum; }
     }
     pushOuter(ctx, line);
     return;
   }
 
-  // #pragma
   if (/^#pragma\b/.test(line)) { pushOuter(ctx, line); return; }
 
-  // fn declaration — must start at column 0; { is optional
   m = line.match(/^fn[ \t]+(\w+)\s*\(([^)]*)\)\s*\{?/);
   if (m) {
     const inline = ctx.recentOuter.some(l => /^#pragma\s+inline\s*$/.test(l));
@@ -444,12 +349,8 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
   m = line.match(/^\s*\/\/\s*([\w]+):\s*(.+)/);
   if (m && m[1] && m[2]) {
     const key = m[1], value = m[2].trim();
-    if (key === "name") {
-      if (!ctx.projectName || ctx.projectName === "my-agent") ctx.projectName = value;
-    } else if (KNOWN_KEYS.has(key)) {
-      ctx.frontmatter[key] = value;
-      ctx.lineMap[key]     = ctx.lineNum;
-    }
+    if (key === "name") { if (!ctx.projectName || ctx.projectName === "my-agent") ctx.projectName = value; }
+    else if (KNOWN_KEYS.has(key)) { ctx.frontmatter[key] = value; ctx.lineMap[key] = ctx.lineNum; }
   }
 
   pushOuter(ctx, line);
@@ -491,7 +392,7 @@ function finalizeCtx(ctx: ParseCtx): ParsedAgent {
     }
   }
 
-  return { name: ctx.projectName, systemPrompt: ctx.systemPrompt, skills: ctx.skills, frontmatter: ctx.frontmatter, warnings: [...ctx.warnings, ...warnings] };
+  return { name: ctx.projectName, systemPrompt: ctx.systemPrompt, skills: ctx.skills, frontmatter: ctx.frontmatter, warnings: [...ctx.warnings, ...warnings], repoConfigs: ctx.repoConfigs };
 }
 
 // ── Public parsing API ──────────────────────────────────────────────────────

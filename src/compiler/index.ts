@@ -1,5 +1,6 @@
 export * from "./parser";
-export * from "./share";
+export * from "./compat";
+export * from "./repos";
 export * from "./targets/claude";
 export * from "./targets/kiro";
 export * from "./targets/gemini";
