@@ -1,12 +1,13 @@
-export const PLATFORMS = ["claude", "kiro", "gemini", "codex", "cursor"] as const;
+export const PLATFORMS = ["claude", "kiro", "gemini", "codex", "cursor", "claude_sdk"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
-  claude: "Claude Code",
-  kiro:   "Kiro",
-  gemini: "Gemini CLI",
-  codex:  "Codex CLI",
-  cursor: "Cursor",
+  claude:       "Claude Code",
+  kiro:         "Kiro",
+  gemini:       "Gemini CLI",
+  codex:        "Codex CLI",
+  cursor:       "Cursor",
+  claude_sdk: "Anthropic SDK",
 };
 
 export type SupportLevel =
@@ -54,6 +55,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "full",   note: "Used by Gemini for delegation decisions between agents." },
       codex:  { level: "full",   note: "Written as a paragraph below the agent name in AGENTS.md." },
       cursor: { level: "full",   note: "Written as description in the .mdc rule frontmatter." },
+      claude_sdk: { level: "full",   note: "Emitted as a JSDoc comment above the run() function." },
     },
   },
   {
@@ -69,6 +71,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "full" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
 
@@ -86,6 +89,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "mapped", note: "haiku → gemini-2.0-flash · sonnet → gemini-2.5-flash · opus → gemini-2.5-pro" },
       codex:  { level: "mapped", note: "haiku → codex-mini-latest · sonnet → o4-mini · opus → o3. Emitted as an HTML comment in AGENTS.md." },
       cursor: { level: "mapped", note: "Emitted as an HTML comment in the .mdc rule. Cursor selects model per-session in the UI." },
+      claude_sdk: { level: "mapped", note: "haiku → claude-haiku-4-5 · sonnet → claude-sonnet-4-6 · opus → claude-opus-4-7 (default)." },
     },
   },
   {
@@ -101,6 +105,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "full",   note: "Emitted as output_config.effort in the messages.create() call." },
     },
   },
   {
@@ -115,6 +120,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "mapped", note: "Emitted as max_turns in YAML frontmatter." },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "full",   note: "Controls the tool-use loop iteration limit (default 20)." },
     },
   },
   {
@@ -129,6 +135,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "full" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none",   note: "Not supported on claude-opus-4-7; omit for all models." },
     },
   },
 
@@ -145,6 +152,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "mapped", note: "Mapped to Gemini tool names (read_file, glob, run_shell_command, etc.) and emitted as a YAML array." },
       codex:  { level: "none",   note: "Tool access is controlled by the --approval-mode CLI flag, not per-agent configuration." },
       cursor: { level: "none",   note: "Tool access is configured globally in Cursor settings, not per-rule." },
+      claude_sdk: { level: "none",   note: "Tools come from skill fn definitions and are emitted as TOOLS[] in the generated TypeScript." },
     },
   },
   {
@@ -159,6 +167,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -174,6 +183,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -188,6 +198,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
 
@@ -205,6 +216,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -220,6 +232,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -235,6 +248,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -249,6 +263,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -263,6 +278,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -277,6 +293,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "mapped", note: "Emitted as timeout_mins in YAML frontmatter." },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
 
@@ -294,6 +311,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
   {
@@ -308,6 +326,7 @@ export const FIELDS: readonly FieldDef[] = [
       gemini: { level: "none" },
       codex:  { level: "none" },
       cursor: { level: "none" },
+      claude_sdk: { level: "none" },
     },
   },
 ] as const satisfies readonly FieldDef[];
@@ -322,25 +341,25 @@ export interface ToolDef {
 
 export const TOOLS: readonly ToolDef[] = [
   // Read-only filesystem
-  { name: "Read",         description: "Read file contents",                      platforms: { claude: "Read",         kiro: "read",  gemini: "read_file",         codex: "shell", cursor: "read_file"        } },
-  { name: "Glob",         description: "Find files matching a glob pattern",      platforms: { claude: "Glob",         kiro: "read",  gemini: "glob",              codex: "shell", cursor: "file_search"      } },
-  { name: "Grep",         description: "Search file contents by pattern",         platforms: { claude: "Grep",         kiro: "read",  gemini: "grep_search",       codex: "shell", cursor: "grep_search"      } },
-  { name: "LS",           description: "List directory contents",                 platforms: { claude: "LS",           kiro: "read",  gemini: "list_directory",    codex: "shell", cursor: "list_dir"         } },
-  { name: "NotebookRead", description: "Read Jupyter notebook cells and outputs", platforms: { claude: "NotebookRead", kiro: "read",  gemini: "read_file",         codex: "shell", cursor: "read_file"        } },
+  { name: "Read",         description: "Read file contents",                      platforms: { claude: "Read",         kiro: "read",  gemini: "read_file",         codex: "shell", cursor: "read_file",        claude_sdk: "Read"         } },
+  { name: "Glob",         description: "Find files matching a glob pattern",      platforms: { claude: "Glob",         kiro: "read",  gemini: "glob",              codex: "shell", cursor: "file_search",      claude_sdk: "Glob"         } },
+  { name: "Grep",         description: "Search file contents by pattern",         platforms: { claude: "Grep",         kiro: "read",  gemini: "grep_search",       codex: "shell", cursor: "grep_search",      claude_sdk: "Grep"         } },
+  { name: "LS",           description: "List directory contents",                 platforms: { claude: "LS",           kiro: "read",  gemini: "list_directory",    codex: "shell", cursor: "list_dir",         claude_sdk: "LS"           } },
+  { name: "NotebookRead", description: "Read Jupyter notebook cells and outputs", platforms: { claude: "NotebookRead", kiro: "read",  gemini: "read_file",         codex: "shell", cursor: "read_file",        claude_sdk: "NotebookRead" } },
   // Write filesystem
-  { name: "Write",        description: "Create or overwrite files",               platforms: { claude: "Write",        kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file"        } },
-  { name: "Edit",         description: "Apply targeted edits to existing files",  platforms: { claude: "Edit",         kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file"        } },
-  { name: "MultiEdit",    description: "Apply multiple edits in one operation",   platforms: { claude: "MultiEdit",    kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file"        } },
-  { name: "NotebookEdit", description: "Edit Jupyter notebook cells",             platforms: { claude: "NotebookEdit", kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file"        } },
+  { name: "Write",        description: "Create or overwrite files",               platforms: { claude: "Write",        kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file",        claude_sdk: "Write"        } },
+  { name: "Edit",         description: "Apply targeted edits to existing files",  platforms: { claude: "Edit",         kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file",        claude_sdk: "Edit"         } },
+  { name: "MultiEdit",    description: "Apply multiple edits in one operation",   platforms: { claude: "MultiEdit",    kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file",        claude_sdk: "MultiEdit"    } },
+  { name: "NotebookEdit", description: "Edit Jupyter notebook cells",             platforms: { claude: "NotebookEdit", kiro: "write", gemini: "write_file",        codex: "shell", cursor: "edit_file",        claude_sdk: "NotebookEdit" } },
   // Shell
-  { name: "Bash",         description: "Execute shell commands",                  platforms: { claude: "Bash",         kiro: "shell", gemini: "run_shell_command", codex: "shell", cursor: "run_terminal_cmd" } },
+  { name: "Bash",         description: "Execute shell commands",                  platforms: { claude: "Bash",         kiro: "shell", gemini: "run_shell_command", codex: "shell", cursor: "run_terminal_cmd",  claude_sdk: "Bash"         } },
   // Web
-  { name: "WebSearch",    description: "Search the web",                          platforms: { claude: "WebSearch",    kiro: "web",   gemini: "google_search",     codex: "web_search", cursor: "web_search"  } },
-  { name: "WebFetch",     description: "Fetch content from a URL",                platforms: { claude: "WebFetch",     kiro: "web",   gemini: "web_fetch",         codex: "web_fetch",  cursor: "web_fetch"   } },
+  { name: "WebSearch",    description: "Search the web",                          platforms: { claude: "WebSearch",    kiro: "web",   gemini: "google_search",     codex: "web_search", cursor: "web_search",   claude_sdk: "WebSearch"    } },
+  { name: "WebFetch",     description: "Fetch content from a URL",                platforms: { claude: "WebFetch",     kiro: "web",   gemini: "web_fetch",         codex: "web_fetch",  cursor: "web_fetch",    claude_sdk: "WebFetch"     } },
   // Task management (no Cursor/Gemini/Codex equivalent)
-  { name: "TodoRead",     description: "Read the current task/todo list",         platforms: { claude: "TodoRead",     kiro: "spec",  gemini: "",                  codex: "",           cursor: ""            } },
-  { name: "TodoWrite",    description: "Write to the task/todo list",             platforms: { claude: "TodoWrite",    kiro: "spec",  gemini: "",                  codex: "",           cursor: ""            } },
-  { name: "Task",         description: "Spawn a subagent for parallel tasks",     platforms: { claude: "Task",         kiro: "spec",  gemini: "",                  codex: "",           cursor: ""            } },
+  { name: "TodoRead",     description: "Read the current task/todo list",         platforms: { claude: "TodoRead",     kiro: "spec",  gemini: "",                  codex: "",           cursor: "",             claude_sdk: ""             } },
+  { name: "TodoWrite",    description: "Write to the task/todo list",             platforms: { claude: "TodoWrite",    kiro: "spec",  gemini: "",                  codex: "",           cursor: "",             claude_sdk: ""             } },
+  { name: "Task",         description: "Spawn a subagent for parallel tasks",     platforms: { claude: "Task",         kiro: "spec",  gemini: "",                  codex: "",           cursor: "",             claude_sdk: ""             } },
 ] as const satisfies readonly ToolDef[];
 
 // Lookup by lowercase canonical name
