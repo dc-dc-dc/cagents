@@ -1,8 +1,10 @@
 import { parseCAgent } from "./parser";
+import type { ParsedAgent } from "./parser";
 import { PLATFORMS, PLATFORM_LABELS } from "./compat";
 import type { Platform } from "./compat";
 import { GENERATORS } from "./index";
 import { fetchRepos } from "./repos";
+import { fetchSkillsShPackages } from "./skillssh";
 
 export type { Platform };
 
@@ -35,6 +37,7 @@ export interface IO {
   writeFile(path: string, content: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   mkdir(dir: string): Promise<void>;
+  spawn(cmd: string[]): Promise<void>;
 }
 
 export type InstallScope = "local" | "user";
@@ -108,6 +111,7 @@ C-Agents — Low-level programming for AI agents.
 
 Usage:
   cagents [build] [--target <t>] [--local|--user] [--repos <url>...] <file.ca>   Build agent files (default)
+  cagents run    [--target <t>] [--local|--user] [--repos <url>...] <file.ca>   Build then launch the target CLI
   cagents init [name]                                                               Create a new agent template
 
 Targets:
@@ -134,7 +138,13 @@ Docs: https://cagents.io/spec
 `);
 }
 
-async function build(io: IO, files: string[], target: Platform, scope: InstallScope, repoUrls: string[] = []) {
+const LAUNCH_COMMANDS: Partial<Record<Platform, (name: string) => string[]>> = {
+  claude: (name) => ["claude", "--agent", name],
+  gemini: (_)    => ["gemini"],
+  codex:  (_)    => ["codex"],
+};
+
+async function build(io: IO, files: string[], target: Platform, scope: InstallScope, repoUrls: string[] = []): Promise<ParsedAgent[]> {
   if (files.length === 0) {
     console.error("Error: no files specified");
     console.error(`Usage: cagents [build] [--target ${PLATFORMS.join("|")}] [--local|--user] <file.ca> [...]`);
@@ -153,14 +163,18 @@ async function build(io: IO, files: string[], target: Platform, scope: InstallSc
     sources.push({ file, source: await io.readFile(file) });
   }
 
-  // Fetch GitHub repos if any --repos were provided
-  const repos =
-    repoUrls.length > 0
-      ? await fetchRepos(repoUrls, sources.map((s) => s.source))
-      : {};
+  const sourcesText = sources.map((s) => s.source);
 
+  // Fetch GitHub repos and skills.sh packages in parallel
+  const [repos, skillssh] = await Promise.all([
+    repoUrls.length > 0 ? fetchRepos(repoUrls, sourcesText) : Promise.resolve({}),
+    fetchSkillsShPackages(sourcesText),
+  ]);
+
+  const agents: ParsedAgent[] = [];
   for (const { file, source } of sources) {
-    const agent = parseCAgent(source, undefined, file, repos);
+    const agent = parseCAgent(source, undefined, file, repos, skillssh);
+    agents.push(agent);
 
     for (const w of agent.warnings) {
       console.warn(`  ⚠ ${file}:${w.line} [${w.key}] ${w.message}`);
@@ -175,6 +189,22 @@ async function build(io: IO, files: string[], target: Platform, scope: InstallSc
       console.log(`  ✓ ${fullPath}`);
     }
   }
+  return agents;
+}
+
+async function run(io: IO, files: string[], target: Platform, scope: InstallScope, repoUrls: string[]) {
+  const agents = await build(io, files, target, scope, repoUrls);
+  const agentName = agents[0]!.name;
+
+  const getCmd = LAUNCH_COMMANDS[target];
+  if (!getCmd) {
+    console.log(`\n  Built for ${PLATFORM_LABELS[target]}. Open your IDE to use the "${agentName}" agent.`);
+    return;
+  }
+
+  const cmd = getCmd(agentName);
+  console.log(`\n  → ${cmd.join(" ")}`);
+  await io.spawn(cmd);
 }
 
 async function init(io: IO, name = "my-agent") {
@@ -200,6 +230,12 @@ export async function runCLI(io: IO, args: string[]) {
   if (cmd === "init") {
     const { rest } = parseFlags(args.slice(1));
     await init(io, rest[0]);
+    return;
+  }
+
+  if (cmd === "run") {
+    const { target, scope, repos, rest } = parseFlags(args.slice(1));
+    await run(io, rest, target, scope, repos);
     return;
   }
 

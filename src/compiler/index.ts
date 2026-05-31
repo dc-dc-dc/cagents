@@ -1,6 +1,7 @@
 export * from "./parser";
 export * from "./compat";
 export * from "./repos";
+export * from "./skillssh";
 export * from "./targets/claude";
 export * from "./targets/kiro";
 export * from "./targets/gemini";

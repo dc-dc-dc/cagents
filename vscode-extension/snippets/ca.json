@@ -1,0 +1,82 @@
+{
+  "New agent": {
+    "prefix": "agent",
+    "body": [
+      "#def name ${1:my-agent}",
+      "#def description ${2:What this agent does}",
+      "#def model ${3|sonnet,haiku,opus|}",
+      "#def tools ${4:Read, Glob, Grep}",
+      "",
+      "fn main() {",
+      "    ${5:You are a helpful assistant.}",
+      "}"
+    ],
+    "description": "New agent file with common frontmatter"
+  },
+
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:str arg}) {",
+      "    ${3:Describe what this function does.}",
+      "}"
+    ],
+    "description": "Define a skill function"
+  },
+
+  "Main function": {
+    "prefix": "main",
+    "body": [
+      "fn main() {",
+      "    ${1:You are a helpful assistant.}",
+      "}"
+    ],
+    "description": "Define the agent's system prompt"
+  },
+
+  "#def model": {
+    "prefix": "#def model",
+    "body": "#def model ${1|sonnet,haiku,opus|}",
+    "description": "Set the model"
+  },
+
+  "#def tools": {
+    "prefix": "#def tools",
+    "body": "#def tools ${1:Read, Glob, Grep}",
+    "description": "Set allowed tools"
+  },
+
+  "#def effort": {
+    "prefix": "#def effort",
+    "body": "#def effort ${1|medium,low,high|}",
+    "description": "Set effort level"
+  },
+
+  "#def permissionMode": {
+    "prefix": "#def permissionMode",
+    "body": "#def permissionMode ${1|default,acceptEdits,fullAuto|}",
+    "description": "Set permission mode"
+  },
+
+  "#if block": {
+    "prefix": "#if",
+    "body": [
+      "#if ${1:var} == ${2:value}",
+      "    ${3}",
+      "#endif"
+    ],
+    "description": "Conditional block"
+  },
+
+  "#include file": {
+    "prefix": "#include \"",
+    "body": "#include \"${1:path/to/file.ca}\"",
+    "description": "Include a local file"
+  },
+
+  "#include repo": {
+    "prefix": "#include <",
+    "body": "#include <${1:org/repo}/${2:path}>",
+    "description": "Include from a GitHub repo"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "cagents-language",
+  "displayName": "C-Agents Language",
+  "description": "Syntax highlighting for .ca (C-Agent) files",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": { "vscode": "^1.74.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cagent",
+        "aliases": ["C-Agent", "cagent"],
+        "extensions": [".ca"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cagent",
+        "scopeName": "source.ca",
+        "path": "./syntaxes/ca.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "cagent",
+        "path": "./snippets/ca.json"
+      }
+    ]
+  }
+}

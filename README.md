@@ -113,6 +113,11 @@ cagents build *.ca
 
 # Build with shared repo includes
 cagents --repos github.com/my-org/shared-agents my-agent.ca
+
+# Build and immediately launch the target CLI
+cagents run my-agent.ca
+cagents run --target gemini my-agent.ca
+cagents run --target codex my-agent.ca
 ```
 
 ### Install scope

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "C-Agent",
+  "scopeName": "source.ca",
+  "fileTypes": ["ca"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#function" },
+    { "include": "#function-nobrace" },
+    { "include": "#directive" },
+    { "include": "#interpolation" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "//.*$",
+      "name": "comment.line.double-slash.ca"
+    },
+
+    "interpolation": {
+      "match": "\\$\\{(\\w+)\\}",
+      "name": "variable.other.interpolated.ca",
+      "captures": {
+        "1": { "name": "variable.other.ca" }
+      }
+    },
+
+    "directive": {
+      "patterns": [
+        { "include": "#def-frontmatter" },
+        { "include": "#def-custom" },
+        { "include": "#include-file" },
+        { "include": "#include-repo" },
+        { "include": "#conditional" },
+        { "include": "#pragma" }
+      ]
+    },
+
+    "def-frontmatter": {
+      "match": "^(#def)[ \\t]+(name|description|model|tools|effort|maxTurns|disallowedTools|permissionMode|background|isolation|memory|color|initialPrompt|allowedTools|includeMcpJson|welcomeMessage|temperature|timeoutMins|kind)(?:[ \\t]+(.+))?$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.ca" },
+        "2": { "name": "support.type.property-name.ca" },
+        "3": { "name": "string.unquoted.value.ca" }
+      }
+    },
+
+    "def-custom": {
+      "match": "^(#def)[ \\t]+(\\w+)(?:[ \\t]+(.+))?$",
+      "captures": {
+        "1": { "name": "keyword.control.directive.ca" },
+        "2": { "name": "variable.other.define.ca" },
+        "3": { "name": "string.unquoted.value.ca" }
+      }
+    },
+
+    "include-file": {
+      "match": "^[ \\t]*(#include)[ \\t]+\"([^\"]+)\"[ \\t]*$",
+      "captures": {
+        "1": { "name": "keyword.control.include.ca" },
+        "2": { "name": "string.quoted.double.include.ca" }
+      }
+    },
+
+    "include-repo": {
+      "match": "^[ \\t]*(#include)[ \\t]+<([\\w.-]+)\\/([^>\\s]+)>[ \\t]*$",
+      "captures": {
+        "1": { "name": "keyword.control.include.ca" },
+        "2": { "name": "entity.name.namespace.ca" },
+        "3": { "name": "string.other.include-path.ca" }
+      }
+    },
+
+    "conditional": {
+      "patterns": [
+        {
+          "match": "^[ \\t]*(#if)[ \\t]+(\\w+)[ \\t]*(==|!=)[ \\t]*(\\S+)",
+          "captures": {
+            "1": { "name": "keyword.control.conditional.ca" },
+            "2": { "name": "variable.other.ca" },
+            "3": { "name": "keyword.operator.comparison.ca" },
+            "4": { "name": "string.unquoted.ca" }
+          }
+        },
+        {
+          "match": "^[ \\t]*(#endif)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.conditional.ca" }
+          }
+        }
+      ]
+    },
+
+    "pragma": {
+      "match": "^(#pragma)[ \\t]+(\\w+)",
+      "captures": {
+        "1": { "name": "keyword.control.pragma.ca" },
+        "2": { "name": "keyword.other.ca" }
+      }
+    },
+
+    "param-types": {
+      "patterns": [
+        {
+          "match": "\\b(str|int|float|double|bool|void)\\*?\\b",
+          "name": "storage.type.ca"
+        },
+        {
+          "match": "(?:^|(?<=,\\s*))(\\w+)(?=\\s*[,)]|$)",
+          "captures": {
+            "1": { "name": "variable.parameter.ca" }
+          }
+        }
+      ]
+    },
+
+    "function": {
+      "begin": "^(fn)[ \\t]+(\\w+)[ \\t]*\\(([^)]*)\\)[ \\t]*\\{[ \\t]*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.function.ca" },
+        "2": { "name": "entity.name.function.ca" },
+        "3": { "patterns": [{ "include": "#param-types" }] }
+      },
+      "end": "^\\}[ \\t]*$",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.block.end.ca" }
+      },
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#directive" },
+        { "include": "#interpolation" }
+      ]
+    },
+
+    "function-nobrace": {
+      "match": "^(fn)[ \\t]+(\\w+)[ \\t]*\\(([^)]*)\\)[ \\t]*$",
+      "captures": {
+        "1": { "name": "keyword.declaration.function.ca" },
+        "2": { "name": "entity.name.function.ca" },
+        "3": { "patterns": [{ "include": "#param-types" }] }
+      }
+    }
+  }
+}

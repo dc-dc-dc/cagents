@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ALL_KNOWN_KEYS, isKnownTool, TOOLS } from "./compat";
+import { SKILLSSH_ALIAS } from "./skillssh";
 
 // ── Public types ────────────────────────────────────────────────────────────
 
@@ -179,6 +180,7 @@ interface ParseCtx {
   lineNum:      number;
   files:        Record<string, string>;
   repos:        Record<string, Record<string, string>>;
+  skillssh:     Record<string, ParsedSkill>;
   visitedFiles: Set<string>;
   currentFile:  string;
   includeDepth: number;
@@ -247,6 +249,7 @@ function doFileInclude(ctx: ParseCtx, rawPath: string, indent: string): void {
 }
 
 function doRepoInclude(ctx: ParseCtx, alias: string, path: string, indent: string): void {
+  if (alias === SKILLSSH_ALIAS) { doSkillsShInclude(ctx, path); return; }
   const refKey = `<${alias}/${path}>`;
   if (ctx.visitedFiles.has(refKey)) return;
   const result = resolveRepoContent(ctx.repos, alias, path);
@@ -255,6 +258,17 @@ function doRepoInclude(ctx: ParseCtx, alias: string, path: string, indent: strin
     return;
   }
   expandLines(ctx, refKey, result.content, indent, ctx.fn ? 0 : 1);
+}
+
+function doSkillsShInclude(ctx: ParseCtx, path: string): void {
+  const skill = ctx.skillssh[path];
+  if (!skill) {
+    ctx.warnings.push({ key: "#include", value: `<${SKILLSSH_ALIAS}/${path}>`, message: `skills.sh skill not found: "${path}"`, line: ctx.lineNum });
+    return;
+  }
+  if (!ctx.skills.some((s) => s.name === skill.name)) {
+    ctx.skills.push(skill);
+  }
 }
 
 function ctxCloseFunction(ctx: ParseCtx): void {
@@ -299,7 +313,7 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
     if (!ctxIsActive(ctx)) return;
     bm = line.match(/^([ \t]+)#include\s+"([^"]+)"\s*$/);
     if (bm) { doFileInclude(ctx, bm[2]!, bm[1]!); return; }
-    bm = line.match(/^([ \t]+)#include\s+<([\w-]+)\/([^>\s]+)>\s*$/);
+    bm = line.match(/^([ \t]+)#include\s+<([\w.-]+)\/([^>\s]+)>\s*$/);
     if (bm) { doRepoInclude(ctx, bm[2]!, bm[3]!, bm[1]!); return; }
     const bodyLine = line.startsWith("\t") ? line.slice(1) : line;
     if (/^\s*\/\//.test(bodyLine)) return;
@@ -320,7 +334,7 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
 
   m = line.match(/^#include\s+"([^"]+)"\s*$/);
   if (m) { doFileInclude(ctx, m[1]!, ""); return; }
-  m = line.match(/^#include\s+<([\w-]+)\/([^>\s]+)>\s*$/);
+  m = line.match(/^#include\s+<([\w.-]+)\/([^>\s]+)>\s*$/);
   if (m) { doRepoInclude(ctx, m[1]!, m[2]!, ""); return; }
 
   m = line.match(/^#def\s+(\w+)\s+(.+)/);
@@ -359,12 +373,13 @@ function ctxFeedLine(line: string, ctx: ParseCtx): void {
 function makeCtx(
   files: Record<string, string>,
   currentFile: string,
-  repos: Record<string, Record<string, string>> = {}
+  repos: Record<string, Record<string, string>> = {},
+  skillssh: Record<string, ParsedSkill> = {}
 ): ParseCtx {
   return {
     defines: {}, condStack: [], fn: null, recentOuter: [],
     projectName: "my-agent", frontmatter: {}, lineMap: {}, systemPrompt: "", skills: [], warnings: [], repoConfigs: {},
-    lineNum: 0, files, repos, visitedFiles: new Set([currentFile]), currentFile, includeDepth: 0,
+    lineNum: 0, files, repos, skillssh, visitedFiles: new Set([currentFile]), currentFile, includeDepth: 0,
   };
 }
 
@@ -402,9 +417,10 @@ export function parseCAgentLines(
   lines: Iterable<string>,
   files: Record<string, string> = {},
   currentFile = "main.ca",
-  repos: Record<string, Record<string, string>> = {}
+  repos: Record<string, Record<string, string>> = {},
+  skillssh: Record<string, ParsedSkill> = {}
 ): ParsedAgent {
-  const ctx = makeCtx(files, currentFile, repos);
+  const ctx = makeCtx(files, currentFile, repos, skillssh);
   for (const line of lines) ctxFeedLine(line, ctx);
   return finalizeCtx(ctx);
 }
@@ -420,9 +436,10 @@ export async function parseCAgentStream(
   lines: AsyncIterable<string>,
   files: Record<string, string> = {},
   currentFile = "main.ca",
-  repos: Record<string, Record<string, string>> = {}
+  repos: Record<string, Record<string, string>> = {},
+  skillssh: Record<string, ParsedSkill> = {}
 ): Promise<ParsedAgent> {
-  const ctx = makeCtx(files, currentFile, repos);
+  const ctx = makeCtx(files, currentFile, repos, skillssh);
   for await (const line of lines) ctxFeedLine(line, ctx);
   return finalizeCtx(ctx);
 }
@@ -432,9 +449,10 @@ export function parseCAgent(
   source: string,
   files?: Record<string, string>,
   currentFile = "main.ca",
-  repos: Record<string, Record<string, string>> = {}
+  repos: Record<string, Record<string, string>> = {},
+  skillssh: Record<string, ParsedSkill> = {}
 ): ParsedAgent {
-  return parseCAgentLines(splitLines(source), files ?? {}, currentFile, repos);
+  return parseCAgentLines(splitLines(source), files ?? {}, currentFile, repos, skillssh);
 }
 
 // ── Output helpers ──────────────────────────────────────────────────────────
